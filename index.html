@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="icon" href="data:,">
+<title>RUNESONG — a rhythm rail shooter</title>
+<meta name="description" content="Fly through four singing realms. Sweep to lock on, release to play the world back into tune.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root { --a: #6dffb0; --b: #ffe27a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #020507; overflow: hidden; color: #eafff4;
+    font-family: 'Cinzel', 'Trajan Pro', 'Palatino Linotype', Georgia, serif; }
+  canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  body.playing, body.playing * { cursor: none; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .6s; }
+  body.playing #hud { opacity: 1; }
+  .corner { position: absolute; padding: 22px 28px; letter-spacing: .22em; font-size: 12px; text-transform: uppercase;
+    text-shadow: 0 0 12px var(--a); }
+  #score { top: 0; left: 0; }
+  #score b { display: block; font-size: 30px; font-weight: 600; letter-spacing: .08em; color: var(--b); }
+  #realm { top: 0; right: 0; text-align: right; }
+  #realm i { display: block; font-style: normal; opacity: .65; margin-top: 4px; }
+  #progress { width: 180px; height: 2px; background: rgba(255,255,255,.15); margin: 10px 0 0 auto; }
+  #progress div { height: 100%; width: 0; background: var(--a); box-shadow: 0 0 10px var(--a); }
+  #form { bottom: 0; left: 0; }
+  #pips { display: flex; gap: 8px; margin-top: 8px; }
+  #pips span { width: 14px; height: 14px; transform: rotate(45deg); border: 1px solid var(--a); transition: all .3s; }
+  #pips span.on { background: var(--a); box-shadow: 0 0 14px var(--a); }
+  #energy { width: 124px; height: 2px; background: rgba(255,255,255,.15); margin-top: 14px; }
+  #energy div { height: 100%; width: 0; background: var(--b); transition: width .2s; }
+  #mode { bottom: 0; right: 0; text-align: right; opacity: .8; }
+  #boss { position: absolute; top: 26px; left: 50%; transform: translateX(-50%); width: min(46vw, 520px);
+    text-align: center; font-size: 11px; letter-spacing: .4em; opacity: 0; transition: opacity .5s; }
+  #boss.on { opacity: 1; }
+  #boss div { height: 3px; margin-top: 8px; background: rgba(255,255,255,.15); }
+  #boss div div { margin: 0; height: 100%; width: 100%; background: #fff; box-shadow: 0 0 12px #fff; transition: width .2s; }
+  #card { position: absolute; top: 38%; width: 100%; text-align: center; opacity: 0; transition: opacity 1.2s;
+    text-shadow: 0 0 30px var(--a); }
+  #card.on { opacity: 1; }
+  #card h2 { margin: 0; font-size: clamp(28px, 6vw, 68px); font-weight: 400; letter-spacing: .3em; }
+  #card p { margin: 12px 0 0; letter-spacing: .5em; font-size: 13px; opacity: .8; text-transform: uppercase; }
+  #flash { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(transparent 40%, #ff2a2a); opacity: 0; }
+
+  #cursor { position: fixed; left: 0; top: 0; width: 64px; height: 64px; margin: -32px 0 0 -32px; pointer-events: none;
+    display: none; }
+  body.playing #cursor { display: block; }
+  #cursor svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 6px var(--a)); transition: transform .12s; }
+  #cursor.hold svg { transform: scale(1.35) rotate(45deg); }
+  #cursor span { position: absolute; left: 70px; top: 20px; font-size: 16px; color: var(--b); text-shadow: 0 0 8px var(--b); }
+
+  .screen { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 24px; background: radial-gradient(ellipse at center, rgba(2,10,8,.35), rgba(1,4,6,.88)); }
+  .screen.on { display: flex; }
+  h1 { margin: 0; font-weight: 400; font-size: clamp(44px, 11vw, 132px); letter-spacing: .28em; padding-left: .28em;
+    background: linear-gradient(180deg, #fff, var(--b) 45%, var(--a)); -webkit-background-clip: text; background-clip: text;
+    color: transparent; filter: drop-shadow(0 0 28px rgba(109,255,176,.45)); }
+  .sub { letter-spacing: .55em; font-size: clamp(10px, 1.6vw, 14px); text-transform: uppercase; opacity: .8; margin: 10px 0 34px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin: 8px 0; }
+  .label { font-size: 10px; letter-spacing: .5em; opacity: .55; text-transform: uppercase; margin-top: 18px; }
+  button { font: inherit; color: inherit; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.25);
+    padding: 12px 20px; letter-spacing: .22em; font-size: 12px; text-transform: uppercase; cursor: pointer;
+    transition: all .2s; }
+  button small { display: block; font-size: 9px; opacity: .6; margin-top: 4px; letter-spacing: .18em; }
+  button:hover { border-color: var(--a); box-shadow: 0 0 18px rgba(109,255,176,.3); }
+  button.sel { border-color: var(--b); color: var(--b); box-shadow: 0 0 18px rgba(255,226,122,.25) inset; }
+  button.go { margin-top: 30px; padding: 16px 54px; font-size: 16px; border-color: var(--a); color: var(--a); }
+  .how { margin-top: 26px; font-family: Georgia, serif; font-size: 13px; line-height: 1.7; opacity: .7; max-width: 560px; }
+  .credit { position: absolute; bottom: 14px; font-family: Georgia, serif; font-size: 11px; opacity: .45; }
+  .credit a { color: inherit; }
+  .big { font-size: clamp(26px, 5vw, 56px); letter-spacing: .3em; margin: 0 0 10px; font-weight: 400; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud">
+  <div id="score" class="corner">Resonance<b>0</b></div>
+  <div id="realm" class="corner"><span></span><i></i><div id="progress"><div></div></div></div>
+  <div id="form" class="corner">Spirit<div id="pips"></div><div id="energy"><div></div></div></div>
+  <div id="mode" class="corner"></div>
+  <div id="boss">Warden<div><div></div></div></div>
+  <div id="card"><h2></h2><p></p></div>
+</div>
+<div id="flash"></div>
+<div id="cursor">
+  <svg viewBox="-32 -32 64 64" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M-22 -10 V-22 H-10 M10 -22 H22 V-10 M22 10 V22 H10 M-10 22 H-22 V10"/>
+    <circle r="2.5" fill="currentColor"/>
+  </svg>
+  <span></span>
+</div>
+
+<div id="menu" class="screen on">
+  <h1>RUNESONG</h1>
+  <div class="sub">a rhythm rail shooter in four singing realms</div>
+  <div class="label">Music</div>
+  <div class="row" id="modes">
+    <button data-choir="0" class="sel">Instrumental<small>synth lead</small></button>
+    <button data-choir="1">Choir<small>sung by the Chimera voice</small></button>
+  </div>
+  <div class="label">Realm</div>
+  <div class="row" id="realms"></div>
+  <button class="go" id="go">Begin</button>
+  <div class="how">Move to aim. <b>Hold</b> (mouse, touch or Space) and sweep across foes to lock up to eight —
+    <b>release</b> to let the volley fly. Every strike lands on the beat. Shoot down incoming sparks before they reach you.
+    <br>Esc pauses · V switches the lead voice.</div>
+  <div class="credit">Vocals rendered with <a href="https://github.com/jamesondh/chimera-vocal-synth" target="_blank" rel="noopener">Chimera</a>,
+    a physical-model voice (MIT) · built with three.js</div>
+</div>
+<div id="pause" class="screen"><p class="big">Paused</p><div class="row"><button id="resume">Resume</button><button id="quit">Realm select</button></div></div>
+<div id="end" class="screen"><p class="big" id="endTitle"></p><div class="sub" id="endSub"></div><button class="go" id="again">Continue</button></div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
